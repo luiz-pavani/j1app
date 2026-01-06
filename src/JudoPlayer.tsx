@@ -1,18 +1,18 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import YouTube from 'react-youtube';
 import { createClient } from '@supabase/supabase-js'; 
 import jsPDF from 'jspdf'; 
 import autoTable from 'jspdf-autotable'; 
-import { 
-  Play, Pause, Trash2, Download, Video, Film, List, X, 
-  Clock, Flag, CheckCircle, ChevronLeft, ChevronRight, Search, 
-  MousePointerClick, Gauge, Youtube, Rewind, BarChart2, PieChart,
-  Edit2, Bot, Copy, Check, Keyboard, AlertTriangle, AlertOctagon,
-  PenTool, ArrowUpRight, Eraser, Palette, Maximize, Save, Eye,
-  FileJson, UploadCloud, Printer, SkipBack, SkipForward, Hand,
-  ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Compass, Trophy, Layers, Tornado,
-   MapPin, Grid, Activity, Triangle, PlayCircle, Users, UserPlus, MonitorPlay, RotateCw,
-  LayoutDashboard, FolderOpen, Shield, Move, Timer, Zap, Undo, Camera
+import {
+   Play, Pause, Trash2, Download, Video, Film, List, X,
+   Clock, Flag, ChevronLeft, ChevronRight, Search,
+   PenTool, ArrowUpRight, Eraser, Undo, Camera,
+   Triangle, ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
+   SkipBack, SkipForward, PlayCircle, MonitorPlay, LayoutDashboard,
+   FolderOpen, Save, UploadCloud, Printer, Bot, Keyboard, Users, UserPlus,
+   Compass, MapPin, Activity, PieChart, Tornado, Layers, Hand, Trophy, Zap,
+   BarChart2, AlertTriangle, AlertOctagon, RotateCw, Copy,
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO SUPABASE ---
@@ -296,7 +296,8 @@ export default function JudoPlayer() {
   };
 
   // --- EFEITOS ---
-  useEffect(() => {
+    
+   useEffect(() => {
     fetchData();
   }, []);
 
@@ -320,7 +321,7 @@ export default function JudoPlayer() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isPlaying]);
+   }, [isPlaying, currentVideoIndex, playlist]);
 
   async function fetchData() {
     const { data: dbAthletes } = await supabase.from('athletes').select('*');
@@ -469,7 +470,7 @@ export default function JudoPlayer() {
   }, [eventos, currentVideo.name]);
 
   const momentumData = useMemo(() => {
-    const buckets: any = {};
+    const buckets: Record<number, { branco: number; azul: number }> = {};
     const evs = eventos.filter((e:any) => e.videoId === currentVideo.name && (e.categoria === 'TECNICA' || e.categoria === 'NE-WAZA'));
     evs.forEach((e:any) => {
         const minuto = Math.floor(e.tempo / 60);
@@ -478,8 +479,8 @@ export default function JudoPlayer() {
         if(e.atleta === 'AZUL') buckets[minuto].azul++;
     });
     const maxMin = Math.ceil(duration / 60) || 5; // Default 5 mins se duration 0
-    const result = [];
-    for(let i=0; i<maxMin; i++) { result.push({ min: i, ...buckets[i] || { branco: 0, azul: 0 } }); }
+    const result: Array<{ min: number; branco: number; azul: number }> = [];
+    for(let i=0; i<maxMin; i++) { result.push({ min: i, ...(buckets[i] || { branco: 0, azul: 0 }) }); }
     return result;
   }, [eventos, currentVideo.name, duration]);
 
@@ -550,15 +551,48 @@ export default function JudoPlayer() {
   const onStateChange = (e: any) => { setIsPlaying(e.data === 1); if (e.data === 0) proximoVideo(); };
   const onFileEnded = () => { proximoVideo(); };
 
-  // Auto-Soremade: Monitora eventos e dispara SOREMADE quando necessário
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (eventos.length > 0) {
-        checkAutoSoremade();
-      }
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [eventos.length]);
+   // Auto-Soremade: Monitora eventos e dispara SOREMADE quando necessário
+     
+    useEffect(() => {
+      const timer = setTimeout(() => {
+         if (eventos.length > 0) {
+            (async () => {
+               // Verifica se deve registrar SOREMADE automaticamente (Ippon, Hansoku, 3 Shidos, GS rules)
+               if (eventos.length === 0) return;
+               const lastEvent = eventos[0];
+               const lastWasSoremade = lastEvent.tipo === 'SOREMADE';
+               if (lastWasSoremade) return;
+
+               const isGS = tempoDisplay.isGS === true;
+
+               // A) Ippon registrado (direto ou via 2 Waza-ari)
+               if ((placar.branco.ippon > 0 || placar.azul.ippon > 0) && !lastWasSoremade) {
+                   await registrarFluxo('SOREMADE');
+                   triggerSoremadeFeedback();
+                   setIsPlaying(false);
+                   return;
+               }
+
+               // B) Hansoku-make registrado (direto ou por 3 shidos)
+               if ((placar.branco.hansoku > 0 || placar.azul.hansoku > 0) && !lastWasSoremade) {
+                   await registrarFluxo('SOREMADE');
+                   triggerSoremadeFeedback();
+                   setIsPlaying(false);
+                   return;
+               }
+
+               // C) GOLDEN SCORE: qualquer ponto (TECNICA/NE-WAZA) ou punição encerra a luta imediatamente
+               if (isGS && (lastEvent.categoria === 'TECNICA' || lastEvent.categoria === 'NE-WAZA' || lastEvent.categoria === 'PUNICAO') && !lastWasSoremade) {
+                   await registrarFluxo('SOREMADE');
+                   triggerSoremadeFeedback();
+                   setIsPlaying(false);
+                   return;
+               }
+            })();
+         }
+      }, 150);
+      return () => clearTimeout(timer);
+    }, [eventos.length, tempoDisplay.isGS, placar.branco.ippon, placar.azul.ippon, placar.branco.hansoku, placar.azul.hansoku]);
 
   const handleMetaUpload = (e: any) => {
       const files = Array.from(e.target.files || []);
@@ -728,23 +762,47 @@ export default function JudoPlayer() {
    const handleFileSelect = (e: any) => { setEventos([]); const files = Array.from(e.target.files || []); const newItems: PlaylistItem[] = files.map((file: any) => ({ id: URL.createObjectURL(file), type: 'FILE', name: file.name })); if (playlist.length === 1 && playlist[0].id === 'kU_gjfnyu6A') { setPlaylist(newItems); setCurrentVideoIndex(0); } else { setPlaylist([...playlist, ...newItems]); } setShowPlaylist(true); };
    const adicionarYoutube = () => { setEventos([]); const link = prompt("Cole o Link do YouTube:"); if (link) { const id = link.includes('v=') ? link.split('v=')[1].split('&')[0] : link.split('/').pop() || link; setPlaylist([...playlist, { id, type: 'YOUTUBE', name: `YouTube: ${id}` }]); setShowPlaylist(true); } };
 
-  const salvarEFechar = async (dados: any) => { 
-    setModalAberto(false); 
-    let novoEvento: any;
-    if (editingEventId) {
-        const eventoEditado = eventos.map((ev: any) => ev.id === editingEventId ? { ...ev, ...dados } : ev);
-        setEventos(eventoEditado);
-        const dbObj = { video_id: dados.videoId, tempo: dados.tempo, categoria: dados.categoria, tipo: dados.tipo, grupo: dados.grupo, especifico: dados.especifico, atleta: dados.atleta, lado: dados.lado, cor_tecnica: dados.corTecnica, resultado: dados.resultado, direcao: dados.direcao, coordenadas: dados.coordenadas, deslocamento: dados.deslocamento, cadencia: dados.cadencia, defesa: dados.defesa, vetores: dados.vetores };
-        Object.keys(dbObj).forEach(key => (dbObj as any)[key] === undefined && delete (dbObj as any)[key]);
-        await supabase.from('events').update(dbObj).eq('id', editingEventId);
-    } else {
-        novoEvento = { id: Date.now(), ...dados };
-        setEventos((prev: any) => [novoEvento, ...prev]); 
-        const dbObj = { id: novoEvento.id, video_id: novoEvento.videoId, tempo: novoEvento.tempo, categoria: novoEvento.categoria, tipo: novoEvento.tipo, grupo: novoEvento.grupo, especifico: novoEvento.especifico, atleta: novoEvento.atleta, lado: novoEvento.lado, cor_tecnica: novoEvento.corTecnica, resultado: novoEvento.resultado, direcao: novoEvento.direcao, coordenadas: novoEvento.coordenadas, deslocamento: novoEvento.deslocamento, cadencia: novoEvento.cadencia, defesa: novoEvento.defesa, vetores: novoEvento.vetores };
-        await supabase.from('events').insert([dbObj]);
-    }
-    safePlay(); 
-  };
+   const salvarEFechar = async (dados: any) => { 
+      // Permite chamar salvarEFechar(null) — constroi dados a partir do estado atual do modal
+      setModalAberto(false);
+      let payload = dados;
+      if (!payload) {
+         payload = {
+            videoId: currentVideo.name,
+            tempo: tempoCapturado,
+            categoria: punicaoMode ? 'PUNICAO' : 'TECNICA',
+            tipo: punicaoMode || (modalGrupo || 'TE-WAZA'),
+            grupo: modalGrupo,
+            especifico: punicaoMode ? motivoShido : (modalNome || 'Técnica Geral'),
+            atleta: modalAtleta,
+            lado: modalLado,
+            corTecnica: punicaoMode ? THEME.warning : (CORES_GRUPOS[modalGrupo] || THEME.neutral),
+            resultado: resultadoPreSelecionado,
+            direcao: modalDirecao,
+            coordenadas: modalXY,
+            deslocamento: modalDeslocamento,
+            cadencia: modalCadencia,
+            defesa: modalDefesa,
+            vetores: currentStrokes.length ? currentStrokes : undefined
+         };
+      }
+
+      let novoEvento: any;
+      if (editingEventId) {
+            const eventoEditado = eventos.map((ev: any) => ev.id === editingEventId ? { ...ev, ...payload } : ev);
+            setEventos(eventoEditado);
+            const dbObj: any = { video_id: payload.videoId, tempo: payload.tempo, categoria: payload.categoria, tipo: payload.tipo, grupo: payload.grupo, especifico: payload.especifico, atleta: payload.atleta, lado: payload.lado, cor_tecnica: payload.corTecnica, resultado: payload.resultado, direcao: payload.direcao, coordenadas: payload.coordenadas, deslocamento: payload.deslocamento, cadencia: payload.cadencia, defesa: payload.defesa, vetores: payload.vetores };
+            Object.keys(dbObj).forEach(key => (dbObj as any)[key] === undefined && delete (dbObj as any)[key]);
+            await supabase.from('events').update(dbObj).eq('id', editingEventId);
+      } else {
+            novoEvento = { id: Date.now(), ...payload };
+            setEventos((prev: any) => [novoEvento, ...prev]); 
+            const dbObj: any = { id: novoEvento.id, video_id: novoEvento.videoId, tempo: novoEvento.tempo, categoria: novoEvento.categoria, tipo: novoEvento.tipo, grupo: novoEvento.grupo, especifico: novoEvento.especifico, atleta: novoEvento.atleta, lado: novoEvento.lado, cor_tecnica: novoEvento.corTecnica, resultado: novoEvento.resultado, direcao: novoEvento.direcao, coordenadas: novoEvento.coordenadas, deslocamento: novoEvento.deslocamento, cadencia: novoEvento.cadencia, defesa: novoEvento.defesa, vetores: novoEvento.vetores };
+            Object.keys(dbObj).forEach(key => (dbObj as any)[key] === undefined && delete (dbObj as any)[key]);
+            await supabase.from('events').insert([dbObj]);
+      }
+      safePlay(); 
+   };
 
   const confirmarEContinuar = (resultado: string) => { const dados = { videoId: currentVideo.name, tempo: tempoCapturado, categoria: 'TECNICA', grupo: modalGrupo, especifico: modalNome || "Técnica Geral", atleta: modalAtleta, lado: modalLado, corTecnica: CORES_GRUPOS[modalGrupo], resultado: resultado, direcao: modalDirecao, coordenadas: modalXY, deslocamento: modalDeslocamento, cadencia: modalCadencia, defesa: modalDefesa }; salvarEFechar(dados); };
   const confirmarPunicao = (atleta: string) => { const dados = { videoId: currentVideo.name, tempo: tempoCapturado, categoria: 'PUNICAO', tipo: punicaoMode, especifico: motivoShido, atleta, lado: '-', corTecnica: THEME.warning }; salvarEFechar(dados); };
@@ -768,7 +826,7 @@ export default function JudoPlayer() {
     
     if (newState) { 
         // Pausa vídeo ao desenhar
-        if (currentVideo.type === 'YOUTUBE' && youtubePlayerRef.current?.pauseVideo) try{youtubePlayerRef.current.pauseVideo()}catch(e){} 
+      if (currentVideo.type === 'YOUTUBE' && youtubePlayerRef.current?.pauseVideo) try { youtubePlayerRef.current.pauseVideo(); } catch (e) { /* ignore pause errors */ } 
         else if(filePlayerRef.current) filePlayerRef.current.pause(); 
         
         // Entra em fullscreen se possível para melhor área de desenho
@@ -969,6 +1027,7 @@ const stopDrawing = (e: any) => {
 };
 
 // Garante que o canvas redimensione se a janela mudar de tamanho
+ 
 useEffect(() => { 
     const handleResize = () => { 
         setIsMobile(window.innerWidth < 800); 
@@ -990,7 +1049,7 @@ useEffect(() => {
         window.removeEventListener('resize', handleResize); 
         document.removeEventListener('fullscreenchange', handleFsChange);
     } 
-}, [isDrawingMode, currentStrokes]);
+}, [isDrawingMode, currentStrokes, redrawStrokes]);
 
 // --- FIM DO BLOCO DE CORREÇÃO DE DESENHO ---
   function exportarBackup() { const backupData = { version: "BETA 3.0", date: new Date().toISOString(), eventos, athletes, metadataMap, playlist }; const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `SMAARTPRO_BACKUP_${new Date().toLocaleDateString().replace(/\//g,'-')}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
@@ -1213,7 +1272,7 @@ maxWidth: '100%',
               <UploadCloud size={20} /> Carregar Arquivo
           </button>
           <button onClick={adicionarYoutube} style={{ ...btnStyle, background: THEME.card, border: `1px solid ${THEME.cardBorder}`, color: 'white', padding: '12px 24px', fontSize: '14px' }}>
-              <Youtube size={20} color="#ef4444" /> Link YouTube
+              <PlayCircle size={20} color="#ef4444" /> Link YouTube
           </button>
       </div>
   </div>
