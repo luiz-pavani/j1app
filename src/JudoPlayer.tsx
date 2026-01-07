@@ -15,9 +15,9 @@ import {
    BarChart2, AlertTriangle, AlertOctagon, RotateCw, Copy,
 } from 'lucide-react';
 
-// --- CONFIGURAÇÃO SUPABASE ---
-const supabaseUrl = 'https://swvkleuxdqvyygelnxgc.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3dmtsZXV4ZHF2eXlnZWxueGdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczNjQ5NjUsImV4cCI6MjA4Mjk0MDk2NX0.GlroeJMkACCt-qqpux1-gzlv9WVl8iD1ELcy_CfBaQg';
+// --- CONFIGURAÇÃO SUPABASE (usar vars de ambiente VITE_SUPABASE_URL / VITE_SUPABASE_KEY) ---
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string) || '';
+const supabaseKey = (import.meta.env.VITE_SUPABASE_KEY as string) || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // --- DESIGN SYSTEM (v28.23) ---
@@ -174,7 +174,7 @@ export default function JudoPlayer() {
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 800);
+   const [isMobile, setIsMobile] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth < 800 : false);
   const [isDataFullscreen, setIsDataFullscreen] = useState(false); 
   const [loopRange, setLoopRange] = useState<LoopRange>(null);
   const [playlistMode, setPlaylistMode] = useState(false);
